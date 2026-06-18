@@ -29,6 +29,7 @@ import { HotelDatePicker } from './HotelDatePicker';
 import { CountrySelect } from './CountrySelect';
 import { isValidEmail, isValidPhone } from '@/lib/contactValidation';
 import { useHotelGrid } from '@/hooks/HotelGridContext';
+import { useAnketaStore, usePassportStore } from '@/hooks/useGuestStore';
 
 interface AnketaModalProps {
   open: boolean;
@@ -155,50 +156,32 @@ export function HotelGuestAnketaModal({ open, onClose, booking }: AnketaModalPro
   }, [booking, rooms]);
   const [dirty, setDirty] = useState(false);
   const [warnOpen, setWarnOpen] = useState(false);
+  const anketaStore = useAnketaStore<AnketaForm>();
+const passportStore = usePassportStore<StoredPassport>();
 
-  // Hydrate the form whenever the modal opens — pulling from BOTH the
-  // anketa-specific saved blob AND the per-booking passport entered through
-  // Guest Details. Result: anything captured anywhere about this booking is
-  // already filled in here.
+
+  // Hydrate from shared store whenever modal opens
   useEffect(() => {
     if (!open) return;
     if (!booking) { setForm(emptyForm(null)); return; }
     let base = emptyForm(booking);
-    try {
-      const raw = window.localStorage.getItem(STORAGE_PREFIX + booking.id);
-      if (raw) base = { ...base, ...(JSON.parse(raw) as Partial<AnketaForm>) };
-    } catch { /* ignore */ }
-    try {
-      const rawP = window.localStorage.getItem(PASSPORT_PREFIX + booking.id);
-      if (rawP) base = mergePassportIntoForm(base, JSON.parse(rawP) as StoredPassport);
-    } catch { /* ignore */ }
-    // Always honor the booking's actual category from the grid as the source
-    // of truth; the user can still override in the chip row below.
+    const saved = anketaStore.get(booking.id);
+    if (saved) base = { ...base, ...saved };
+    const passport = passportStore.get(`guest-passport:booking:${booking.id}`);
+    if (passport) base = mergePassportIntoForm(base, passport);
     if (detectedCategoryId) base.roomType = detectedCategoryId;
     setForm(base);
-  }, [open, booking, detectedCategoryId]);
+  }, [open, booking, detectedCategoryId, anketaStore, passportStore]);
 
-  // Live-react to passport edits made elsewhere (Guest Details panel saving
-  // while Anketa is open in another tab/role). Same merge-only-empty rule.
+  // Live-react to passport edits made elsewhere
   useEffect(() => {
     if (!open || !booking) return;
-    const reload = () => {
-      try {
-        const rawP = window.localStorage.getItem(PASSPORT_PREFIX + booking.id);
-        if (!rawP) return;
-        setForm((prev) => mergePassportIntoForm(prev, JSON.parse(rawP) as StoredPassport));
-      } catch { /* ignore */ }
-    };
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === PASSPORT_PREFIX + booking.id) reload();
-    };
-    window.addEventListener('storage', onStorage);
-    window.addEventListener('sayohat-passport-changed', reload);
-    return () => {
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('sayohat-passport-changed', reload);
-    };
-  }, [open, booking]);
+    const passport = passportStore.get(`guest-passport:booking:${booking.id}`);
+    if (passport) {
+      setForm((prev) => mergePassportIntoForm(prev, passport));
+    }
+  }, [open, booking, passportStore.all]);
+
 
   const update = <K extends keyof AnketaForm>(key: K, value: AnketaForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -247,7 +230,7 @@ export function HotelGuestAnketaModal({ open, onClose, booking }: AnketaModalPro
       return;
     }
     try {
-      window.localStorage.setItem(STORAGE_PREFIX + booking.id, JSON.stringify(form));
+            anketaStore.set(booking.id, form);
       toast.success(t('anketaSaved'));
       setDirty(false);
       onClose();

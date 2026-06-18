@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-export type HotelStateKey = 'bookings' | 'grid' | 'admins' | 'audit' | 'auth-history';
+export type HotelStateKey = 'bookings' | 'grid' | 'admins' | 'audit' | 'auth-history' | 'guest-anketa' | 'guest-passport';
 
 interface Row<T> { state_data: T; version: number; updated_at: string }
 
